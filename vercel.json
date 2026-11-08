@@ -1,0 +1,5 @@
+{
+  "regions": ["icn1"],
+  "functions": { "api/data.js": { "maxDuration": 120 } },
+  "rewrites": [{ "source": "/data/restaurants.json", "destination": "/api/data" }]
+}
