@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>세종 새 식당 레이더</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f5f2;--surface:#fff;--surface2:#efede8;--text:#1d1c1a;--muted:#6b6862;--line:#e2dfd8;
+  --accent:#d9480f;--accent-soft:#fde8dc;--new:#0b7a4b;--new-soft:#dcf3e7;--closed:#9a9690;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141412;--surface:#1e1d1b;--surface2:#2a2926;--text:#eeece7;--muted:#a19d95;--line:#34322e;
+  --accent:#ff8a4c;--accent-soft:#3a2418;--new:#4fd394;--new-soft:#16342568;--closed:#77736c;}}
+:root[data-theme="dark"]{
+  --bg:#141412;--surface:#1e1d1b;--surface2:#2a2926;--text:#eeece7;--muted:#a19d95;--line:#34322e;
+  --accent:#ff8a4c;--accent-soft:#3a2418;--new:#4fd394;--new-soft:#16342568;--closed:#77736c;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 "Noto Sans KR",system-ui,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:20px 16px 60px}
+header h1{margin:0;font-size:22px;letter-spacing:-.02em}
+header p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.kpi b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
+.kpi span{color:var(--muted);font-size:12px}
+.kpi.hl b{color:var(--new)}
+@media(max-width:640px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.row+.row{margin-top:10px}
+.row>.row{flex:1;margin-top:0}
+.lbl{font-size:12px;color:var(--muted);width:44px;flex:none}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:5px 11px;font:inherit;font-size:13px;cursor:pointer}
+.chip.on{background:var(--text);color:var(--surface);border-color:var(--text)}
+.chip .n{opacity:.6;margin-left:3px;font-size:11px}
+input[type=search],select{font:inherit;font-size:14px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)}
+input[type=search]{flex:1;min-width:160px}
+.chart{display:flex;align-items:flex-end;gap:3px;height:70px;margin-top:6px}
+.bar{flex:1;background:var(--accent);border-radius:3px 3px 0 0;min-height:2px;position:relative;opacity:.85}
+.bar:hover{opacity:1}
+.chart-x{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:4px}
+.tabs{display:flex;gap:6px;margin:16px 0 10px;align-items:center}
+.tabs .sp{flex:1}
+.count{color:var(--muted);font-size:13px}
+.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:4px}
+.card h3{margin:0;font-size:16px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.card .meta{font-size:12px;color:var(--muted)}
+.card .addr{font-size:13px}
+.tag{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--surface2);color:var(--muted);font-weight:500}
+.tag.genre{background:var(--accent-soft);color:var(--accent)}
+.tag.new{background:var(--new-soft);color:var(--new)}
+.tag.closed{background:var(--surface2);color:var(--closed)}
+.card.isclosed{opacity:.55}
+.links{display:flex;gap:6px;margin-top:4px}
+.links a{font-size:12px;text-decoration:none;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+.star{background:none;border:0;cursor:pointer;font-size:15px;color:var(--muted);padding:0 2px}
+.star.on{color:#e8a200}
+#map{height:520px;border-radius:12px;border:1px solid var(--line)}
+.empty{text-align:center;padding:40px 16px;color:var(--muted)}
+.empty code{background:var(--surface2);padding:1px 6px;border-radius:4px}
+.empty ol{text-align:left;display:inline-block;margin:10px auto}
+footer{margin-top:30px;color:var(--muted);font-size:12px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>세종 새 식당 레이더</h1>
+  <p id="sub">불러오는 중…</p>
+</header>
+
+<section class="kpis">
+  <div class="kpi hl"><b id="k-fresh">-</b><span>최근 3일 새로 잡힘</span></div>
+  <div class="kpi"><b id="k-7">-</b><span>최근 7일 인허가</span></div>
+  <div class="kpi"><b id="k-30">-</b><span>최근 30일 인허가</span></div>
+  <div class="kpi"><b id="k-fav">-</b><span>관심 동네 30일</span></div>
+</section>
+
+<section class="panel">
+  <div class="row"><span class="lbl">기간</span><div class="row" id="f-period"></div></div>
+  <div class="row"><span class="lbl">종류</span><div class="row" id="f-kind"></div></div>
+  <div class="row"><span class="lbl">장르</span><div class="row" id="f-genre"></div></div>
+  <div class="row"><span class="lbl">동네</span>
+    <select id="f-dong"><option value="">전체 동네</option><option value="★">★ 관심 동네만</option></select>
+    <button class="chip" id="f-open">영업 중만</button>
+    <input type="search" id="f-q" placeholder="상호·주소 검색">
+  </div>
+</section>
+
+<section class="panel">
+  <div class="count">주별 신규 인허가 (최근 26주, 현재 필터 기준)</div>
+  <div class="chart" id="chart"></div>
+  <div class="chart-x"><span id="cx0"></span><span>이번 주</span></div>
+</section>
+
+<div class="tabs">
+  <button class="chip on" data-view="list">목록</button>
+  <button class="chip" data-view="map">지도</button>
+  <span class="sp"></span><span class="count" id="cnt"></span>
+</div>
+<div id="list" class="list"></div>
+<div id="mapbox" class="hidden"><div id="map"></div></div>
+
+<footer>
+  자료: 공공데이터포털 행정안전부 식품_일반음식점·휴게음식점 조회서비스(인허가 신고 기준, 약 2일 지연). 매일 07시·18시 자동 갱신.
+  ‘새로 잡힘’은 이 대시보드가 처음 발견한 날짜 기준. 장르는 업태명·상호로 자동 분류해 틀릴 수 있음. 편의점·출장조리 등은 제외.
+</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+const GENRES = ["한식","국밥·면","고기구이","일식","중식","양식","아시아","분식·간편식","치킨","술집","카페·디저트","기타"];
+const S = {
+  period: store.get("period", 30), kind: store.get("kind", "식당"), genre: "", dong: store.get("dong", ""),
+  open: store.get("open", true), q: "", view: "list", favs: new Set(store.get("favs", ["도담동","나성동"]))
+};
+let ALL = [], map, layer;
+const today = new Date(); today.setHours(0,0,0,0);
+const daysAgo = s => s ? Math.floor((today - new Date(s + "T00:00:00")) / 864e5) : 9999;
+const isClosed = p => /폐업|취소|말소|휴업/.test(p.status);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function chips(el, items, cur, onPick) {
+  el.innerHTML = items.map(([v, t, n]) =>
+    `<button class="chip ${v === cur ? "on" : ""}" data-v="${esc(v)}">${esc(t)}${n != null ? `<span class="n">${n}</span>` : ""}</button>`).join("");
+  el.onclick = e => { const b = e.target.closest("button"); if (b) onPick(isNaN(+b.dataset.v) || b.dataset.v === "" ? b.dataset.v : +b.dataset.v); };
+}
+
+function base(ignore) {
+  return ALL.filter(p =>
+    (ignore === "period" || daysAgo(p.open) <= S.period) &&
+    (ignore === "kind" || S.kind === "전체" || (S.kind === "식당" ? p.genre !== "카페·디저트" : p.genre === "카페·디저트")) &&
+    (ignore === "genre" || !S.genre || p.genre === S.genre) &&
+    (!S.dong || (S.dong === "★" ? S.favs.has(p.dong) : p.dong === S.dong)) &&
+    (!S.open || !isClosed(p)) &&
+    (!S.q || (p.name + " " + p.addr + " " + p.type).toLowerCase().includes(S.q.toLowerCase())));
+}
+
+function render() {
+  store.set("period", S.period); store.set("kind", S.kind); store.set("dong", S.dong); store.set("open", S.open);
+  chips($("#f-period"), [[7,"7일"],[30,"30일"],[90,"90일"],[365,"1년"]], S.period, v => { S.period = v; render(); });
+  const kb = base("kind");
+  chips($("#f-kind"), [["식당","식당·술집", kb.filter(p=>p.genre!=="카페·디저트").length],["카페","카페·디저트", kb.filter(p=>p.genre==="카페·디저트").length],["전체","전체", kb.length]], S.kind, v => { S.kind = v; S.genre = ""; render(); });
+  const gb = base("genre"), gc = {};
+  gb.forEach(p => gc[p.genre] = (gc[p.genre] || 0) + 1);
+  chips($("#f-genre"), [["", "전체", gb.length], ...GENRES.filter(g => gc[g]).map(g => [g, g, gc[g]])], S.genre, v => { S.genre = v; render(); });
+  $("#f-open").classList.toggle("on", S.open);
+
+  const rows = base();
+  $("#cnt").textContent = `${rows.length}곳`;
+  drawChart();
+  if (S.view === "list") drawList(rows); else drawMap(rows);
+}
+
+function card(p) {
+  const fresh = daysAgo(p.first_seen) <= 3, closed = isClosed(p);
+  const q = encodeURIComponent(`${p.name} 세종 ${p.dong}`);
+  return `<article class="card ${closed ? "isclosed" : ""}">
+    <h3>${esc(p.name)} <span class="tag genre">${esc(p.genre)}</span>
+      ${fresh ? `<span class="tag new">NEW</span>` : ""}${closed ? `<span class="tag closed">${esc(p.status)}</span>` : ""}</h3>
+    <div class="meta">인허가 ${esc(p.open)} · ${daysAgo(p.open)}일 전 · ${esc(p.type || p.kind)}</div>
+    <div class="addr"><button class="star ${S.favs.has(p.dong) ? "on" : ""}" data-dong="${esc(p.dong)}" title="관심 동네">★</button>${esc(p.dong)} · ${esc(p.addr)}</div>
+    <div class="links">
+      <a href="https://map.naver.com/p/search/${q}" target="_blank" rel="noopener">네이버 지도</a>
+      <a href="https://map.kakao.com/?q=${q}" target="_blank" rel="noopener">카카오맵</a>
+      <a href="https://search.naver.com/search.naver?query=${q}" target="_blank" rel="noopener">블로그·후기</a>
+      ${p.tel ? `<a href="tel:${esc(p.tel)}">전화</a>` : ""}
+    </div></article>`;
+}
+
+function drawList(rows) {
+  $("#list").innerHTML = rows.length ? rows.slice(0, 400).map(card).join("") :
+    `<div class="empty">조건에 맞는 새 식당이 없습니다.</div>`;
+}
+
+function drawMap(rows) {
+  if (!window.L) { $("#map").innerHTML = '<div class="empty">지도 라이브러리를 불러오지 못했습니다.</div>'; return; }
+  if (!map) {
+    map = L.map("map").setView([36.495, 127.27], 12);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+    layer = L.layerGroup().addTo(map);
+  }
+  layer.clearLayers();
+  const pts = rows.filter(p => p.lat && p.lng);
+  pts.forEach(p => {
+    const fresh = daysAgo(p.first_seen) <= 3;
+    L.circleMarker([p.lat, p.lng], { radius: fresh ? 8 : 6, weight: 1, color: "#fff",
+      fillColor: fresh ? "#0b7a4b" : "#d9480f", fillOpacity: .9 })
+      .bindPopup(`<b>${esc(p.name)}</b><br>${esc(p.genre)} · ${esc(p.open)}<br>${esc(p.addr)}<br>
+        <a target="_blank" href="https://map.naver.com/p/search/${encodeURIComponent(p.name + " 세종")}">네이버 지도</a>`).addTo(layer);
+  });
+  setTimeout(() => { map.invalidateSize(); if (pts.length) map.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lng])), { maxZoom: 15, padding: [20, 20] }); }, 50);
+}
+
+function drawChart() {
+  const rows = base("period"), W = 26, wk = Array(W).fill(0);
+  rows.forEach(p => { const w = Math.floor(daysAgo(p.open) / 7); if (w >= 0 && w < W) wk[W - 1 - w]++; });
+  const mx = Math.max(1, ...wk);
+  $("#chart").innerHTML = wk.map((n, i) => `<div class="bar" style="height:${n / mx * 100}%" title="${W - 1 - i}주 전: ${n}곳"></div>`).join("");
+  const d = new Date(today - (W - 1) * 7 * 864e5);
+  $("#cx0").textContent = `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function fillDongs() {
+  const c = {}; ALL.forEach(p => c[p.dong] = (c[p.dong] || 0) + 1);
+  const sel = $("#f-dong");
+  sel.innerHTML = `<option value="">전체 동네</option><option value="★">★ 관심 동네만 (${[...S.favs].join(", ") || "없음"})</option>` +
+    Object.keys(c).sort((a, b) => a.localeCompare(b, "ko")).map(d => `<option ${d === S.dong ? "selected" : ""}>${esc(d)}</option>`).join("");
+  sel.value = S.dong;
+}
+
+function kpis() {
+  const live = ALL.filter(p => !isClosed(p));
+  $("#k-fresh").textContent = live.filter(p => daysAgo(p.first_seen) <= 3).length;
+  $("#k-7").textContent = live.filter(p => daysAgo(p.open) <= 7).length;
+  $("#k-30").textContent = live.filter(p => daysAgo(p.open) <= 30).length;
+  $("#k-fav").textContent = live.filter(p => daysAgo(p.open) <= 30 && S.favs.has(p.dong)).length;
+}
+
+$("#f-dong").onchange = e => { S.dong = e.target.value; render(); };
+$("#f-open").onclick = () => { S.open = !S.open; render(); };
+$("#f-q").oninput = e => { S.q = e.target.value.trim(); render(); };
+$("#list").onclick = e => {
+  const b = e.target.closest(".star"); if (!b) return;
+  const d = b.dataset.dong; S.favs.has(d) ? S.favs.delete(d) : S.favs.add(d);
+  store.set("favs", [...S.favs]); fillDongs(); kpis(); render();
+};
+document.querySelectorAll(".tabs [data-view]").forEach(b => b.onclick = () => {
+  S.view = b.dataset.view;
+  document.querySelectorAll(".tabs [data-view]").forEach(x => x.classList.toggle("on", x === b));
+  $("#list").classList.toggle("hidden", S.view !== "list");
+  $("#mapbox").classList.toggle("hidden", S.view !== "map");
+  render();
+});
+
+fetch("data/restaurants.json?t=" + Date.now()).then(r => r.json()).then(d => {
+  ALL = d.places || [];
+  const g = d.generated_at ? new Date(d.generated_at) : null;
+  $("#sub").textContent = g ? `마지막 수집 ${g.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })} · ${d.since} 이후 인허가 ${ALL.length}곳` : "아직 수집 전";
+  if (!ALL.length) {
+    $("#list").innerHTML = `<div class="empty" style="grid-column:1/-1"><b>아직 수집된 데이터가 없습니다.</b><br>
+      <ol><li>data.go.kr에서 ‘행정안전부_식품_일반음식점 조회서비스’, ‘휴게음식점 조회서비스’ 활용신청</li>
+      <li>저장소 Settings › Secrets › Actions 에 <code>DATA_GO_KR_KEY</code> 로 인증키 등록</li>
+      <li>Actions › ‘세종 신규 식당 수집’ › Run workflow</li></ol></div>`;
+  }
+  fillDongs(); kpis(); render();
+}).catch(() => { $("#sub").textContent = "데이터 파일을 불러오지 못했습니다."; });
+</script>
+</body>
+</html>
