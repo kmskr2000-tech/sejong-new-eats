@@ -3,6 +3,9 @@
 // 대시보드(index.html)가 읽는 restaurants.json 형식으로 돌려준다.
 // CDN 캐시(6시간) + stale-while-revalidate 로 자동 갱신된다.
 const proj4 = require("proj4");
+// 공공데이터에 좌표가 없는 곳의 근사 좌표 캐시(id -> [lat, lng]). 없는 곳만 Nominatim 으로 조회
+let GEO = {};
+try { GEO = require("./geo.json"); } catch {}
 
 const SERVICES = [
   ["일반음식점", "https://apis.data.go.kr/1741000/general_restaurants/info"],
@@ -122,7 +125,7 @@ async function geocode(q) {
   const qs = new URLSearchParams({ q, format: "json", limit: 1, countrycodes: "kr" });
   const r = await fetch(`https://nominatim.openstreetmap.org/search?${qs}`, {
     headers: { "User-Agent": "sejong-new-eats/1.0 (github.com/kmskr2000-tech/sejong-new-eats)" },
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(6000),
   });
   const res = await r.json();
   if (res[0]) {
@@ -132,17 +135,21 @@ async function geocode(q) {
   return null;
 }
 
-async function geocodeMissing(places, limit = 45, deadline) {
+async function geocodeMissing(places, limit, deadline) {
+  for (const p of places) {
+    if (p.lat == null && GEO[p.id]) { [p.lat, p.lng] = GEO[p.id]; p.approx = true; }
+  }
+  let ok = 0, tried = 0;
   for (const p of places.filter(p => p.lat == null).slice(0, limit)) {
     if (Date.now() > deadline) break;
+    tried++;
     const road = p.addr.replace(/\(.*?\)/g, "").split(",")[0].trim();
-    for (const q of [road, road.split(/\s+/).slice(0, 3).join(" ")]) {
-      let hit = null;
-      try { hit = await geocode(q); } catch {}
-      await sleep(1100); // Nominatim 이용 정책: 초당 1회
-      if (hit) { [p.lat, p.lng] = hit; p.approx = true; break; }
-    }
+    let hit = null;
+    try { hit = await geocode(road); } catch (e) { console.log("geocode 실패", road, e.message); }
+    await sleep(1100); // Nominatim 이용 정책: 초당 1회
+    if (hit) { [p.lat, p.lng] = hit; p.approx = true; ok++; }
   }
+  console.log(`좌표 보충 ${ok}/${tried}`);
 }
 
 module.exports = async (req, res) => {
@@ -166,7 +173,8 @@ module.exports = async (req, res) => {
     const p = normalize(r);
     if (p && !seen.has(p.id)) { seen.add(p.id); places.push(p); }
   }
-  await geocodeMissing(places, 45, t0 + 100000);
+  console.log(`공공데이터 조회 ${((Date.now() - t0) / 1000).toFixed(1)}초, ${places.length}곳`);
+  await geocodeMissing(places, 15, Date.now() + 25000);
   places.sort((a, b) => (b.open + b.first_seen).localeCompare(a.open + a.first_seen));
   res.setHeader("Cache-Control", "public, s-maxage=21600, stale-while-revalidate=86400");
   res.status(200).json({
