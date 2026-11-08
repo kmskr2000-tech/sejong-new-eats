@@ -44,9 +44,9 @@ EXCLUDE_NAME = re.compile(r"(GS25|지에스25|CU|씨유|세븐일레븐|이마�
 
 GENRE_RULES = [  # (장르, 위생업태명 키워드, 상호 키워드)
     ("카페·디저트", ["까페", "커피", "다방", "제과", "아이스크림", "떡카페", "전통찻집", "키즈카페"],
-     ["카페", "커피", "베이커리", "제과", "디저트", "케이크", "브레드", "빵", "젤라또", "티하우스"]),
+     ["카페", "커피", "베이커리", "제과", "디저트", "케이크", "브레드", "빵", "젤라또", "티하우스", "빙수", "샌드", "와플", "도넛", "베이글", "크리스피"]),
     ("술집", ["호프", "정종", "대포집", "소주방", "감성주점", "라이브카페", "룸살롱"],
-     ["포차", "주점", "이자카야", "호프", "와인", "펍", "비어", "맥주", "술집", "바$", " bar", "하이볼"]),
+     ["포차", "주점", "이자카야", "호프", "와인", "펍", "비어", "맥주", "술집", "바$", " bar", "하이볼", "양조", "브로이", "브루", "탭룸"]),
     ("치킨", ["통닭", "치킨"], ["치킨", "통닭"]),
     ("고기구이", ["식육", "숯불구이"],
      ["갈비", "삼겹", "고기", "한우", "정육", "곱창", "막창", "숯불", "목살", "돼지", "양꼬치", "족발", "보쌈"]),
@@ -54,10 +54,10 @@ GENRE_RULES = [  # (장르, 위생업태명 키워드, 상호 키워드)
      ["스시", "초밥", "오마카세", "돈카츠", "돈까스", "돈가스", "라멘", "우동", "소바", "이자카야", "덮밥", "텐동", "카레", "횟집", "회센터", "사시미"]),
     ("중식", ["중국식"], ["반점", "짬뽕", "짜장", "마라", "훠궈", "중화", "딤섬", "탕후루"]),
     ("양식", ["경양식", "패밀리레스트랑", "패밀리레스토랑"],
-     ["파스타", "피자", "스테이크", "브런치", "버거", "비스트로", "트라토리아", "키친"]),
+     ["파스타", "피자", "스테이크", "브런치", "버거", "비스트로", "트라토리아", "키친", "다이닝"]),
     ("아시아", ["외국음식"], ["쌀국수", "베트남", "타이", "태국", "인도", "커리", "포 ", "분짜", "멕시"]),
-    ("분식·간편식", ["분식", "김밥", "패스트푸드", "일반조리판매", "도시락"],
-     ["김밥", "떡볶이", "분식", "토스트", "샌드위치", "샐러드", "도시락", "핫도그", "만두", "버거"]),
+    ("분식·간편식", ["분식", "김밥", "패스트푸드", "일반조리판매", "도시락", "푸드트럭"],
+     ["김밥", "떡볶이", "분식", "토스트", "샌드위치", "샐러", "도시락", "핫도그", "만두", "버거"]),
     ("국밥·면", ["냉면", "탕류"],
      ["국밥", "해장", "설렁탕", "곰탕", "순대", "국수", "칼국수", "냉면", "막국수", "감자탕", "추어탕", "삼계탕", "백숙"]),
     ("한식", ["한식", "뷔페"], ["한식", "백반", "식당", "밥상", "찌개", "정식", "쌈밥", "한정식", "보리밥", "닭갈비", "찜닭", "아구", "아귀"]),
@@ -66,6 +66,8 @@ GENRE_RULES = [  # (장르, 위생업태명 키워드, 상호 키워드)
 
 def genre_of(btype: str, name: str) -> str:
     btype = btype or ""
+    if "호프" in btype and re.search("치킨|통닭", name):
+        return "치킨"
     for genre, types, _ in GENRE_RULES:
         if any(t in btype for t in types):
             # 업태가 '한식'이어도 상호가 더 구체적이면 상호 우선
@@ -204,6 +206,40 @@ def normalize(r: dict) -> dict | None:
     }
 
 
+def geocode(q: str):
+    url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(
+        {"q": q, "format": "json", "limit": 1, "countrycodes": "kr"})
+    req = urllib.request.Request(url, headers={"User-Agent": "sejong-new-eats/1.0 (github.com/kmskr2000-tech/sejong-new-eats)"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        res = json.loads(r.read().decode("utf-8"))
+    if res:
+        lat, lng = float(res[0]["lat"]), float(res[0]["lon"])
+        if 36.3 < lat < 36.8 and 127.0 < lng < 127.5:  # 세종 범위 밖 결과는 버림
+            return round(lat, 6), round(lng, 6)
+    return None
+
+
+def geocode_missing(places, limit=80):
+    """공공데이터에 좌표가 없는(주로 최근 신고분) 곳을 OSM Nominatim 으로 근사 좌표 보충."""
+    todo = [p for p in places if p["lat"] is None][:limit]
+    hit = 0
+    for p in todo:
+        road = re.sub(r"\(.*?\)", "", p["addr"]).split(",")[0].strip()
+        for q in (road, " ".join(road.split()[:3])):
+            try:
+                r = geocode(q)
+            except Exception as e:
+                print(f"  지오코딩 오류 {q}: {e}", file=sys.stderr)
+                r = None
+            time.sleep(1.1)  # Nominatim 이용 정책: 초당 1회
+            if r:
+                p["lat"], p["lng"], p["approx"] = r[0], r[1], True
+                hit += 1
+                break
+    if todo:
+        print(f"  좌표 보충: {hit}/{len(todo)}곳")
+
+
 def main():
     key = os.environ.get("DATA_GO_KR_KEY", "").strip()
     if not key:
@@ -217,20 +253,33 @@ def main():
         prev = json.loads(OUT.read_text(encoding="utf-8"))
         old = {p["id"]: p for p in prev.get("places", [])}
 
-    rows = []
+    rows, failed = [], set()
     for kind in SERVICES:
         print(f"[{SERVICES[kind][0]}] 인허가일자 {since} 이후 수집")
-        rows += fetch_service(kind, key, since)
+        try:
+            rows += fetch_service(kind, key, since)
+        except Exception as e:  # 한 서비스가 실패해도 나머지는 갱신
+            print(f"  !! {SERVICES[kind][0]} 수집 실패: {e}", file=sys.stderr)
+            failed.add(SERVICES[kind][0])
 
+    if len(failed) == len(SERVICES):
+        sys.exit("모든 서비스 수집 실패 - 기존 데이터 유지")
     today = now.strftime("%Y-%m-%d")
+    old_kinds = {p.get("kind") for p in old.values()}  # 처음 수집되는 서비스는 전부 NEW로 뜨지 않게
     places, seen = [], set()
     for r in rows:
         p = normalize(r)
         if not p or p["id"] in seen:
             continue
         seen.add(p["id"])
-        p["first_seen"] = old.get(p["id"], {}).get("first_seen", today if old else p["open"] or today)
+        prev = old.get(p["id"], {})
+        p["first_seen"] = prev.get("first_seen", today if p["kind"] in old_kinds else p["open"] or today)
+        if p["lat"] is None and prev.get("lat"):
+            p["lat"], p["lng"], p["approx"] = prev["lat"], prev["lng"], prev.get("approx", True)
         places.append(p)
+    # 실패한 서비스의 기존 데이터는 유지
+    places += [p for i, p in old.items() if p.get("kind") in failed and i not in seen]
+    geocode_missing(places)
     places.sort(key=lambda p: (p["open"], p["first_seen"]), reverse=True)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
