@@ -72,7 +72,7 @@ footer{margin-top:30px;color:var(--muted);font-size:12px}
 <div class="wrap">
 <header>
   <h1>세종 새 식당 레이더</h1>
-  <p id="sub">불러오는 중…</p>
+  <p id="sub">불러오는 중… (처음엔 최대 20초)</p>
 </header>
 
 <section class="kpis">
@@ -108,8 +108,8 @@ footer{margin-top:30px;color:var(--muted);font-size:12px}
 <div id="mapbox" class="hidden"><div id="map"></div></div>
 
 <footer>
-  자료: 공공데이터포털 행정안전부 식품_일반음식점·휴게음식점 조회서비스(인허가 신고 기준, 약 2일 지연). 매일 07시·18시 자동 갱신.
-  ‘새로 잡힘’은 이 대시보드가 처음 발견한 날짜 기준. 장르는 업태명·상호로 자동 분류해 틀릴 수 있음. 편의점·출장조리 등은 제외.
+  자료: 공공데이터포털 행정안전부 식품_일반음식점·휴게음식점 조회서비스(인허가 신고 기준, 약 2일 지연). 6시간마다 자동 갱신.
+  ‘새로 잡힘’은 공공데이터에 새로 등록된 날짜 기준. 지도 위치 일부는 주소로 추정한 근사값. 장르는 업태명·상호로 자동 분류해 틀릴 수 있음. 편의점·출장조리 등은 제외.
 </footer>
 </div>
 
@@ -244,15 +244,12 @@ document.querySelectorAll(".tabs [data-view]").forEach(b => b.onclick = () => {
   render();
 });
 
-fetch("data/restaurants.json?t=" + Date.now()).then(r => r.json()).then(d => {
+fetch("data/restaurants.json").then(r => r.json()).then(d => {
   ALL = d.places || [];
   const g = d.generated_at ? new Date(d.generated_at) : null;
   $("#sub").textContent = g ? `마지막 수집 ${g.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })} · ${d.since} 이후 인허가 ${ALL.length}곳` : "아직 수집 전";
   if (!ALL.length) {
-    $("#list").innerHTML = `<div class="empty" style="grid-column:1/-1"><b>아직 수집된 데이터가 없습니다.</b><br>
-      <ol><li>data.go.kr에서 ‘행정안전부_식품_일반음식점 조회서비스’, ‘휴게음식점 조회서비스’ 활용신청</li>
-      <li>저장소 Settings › Secrets › Actions 에 <code>DATA_GO_KR_KEY</code> 로 인증키 등록</li>
-      <li>Actions › ‘세종 신규 식당 수집’ › Run workflow</li></ol></div>`;
+    $("#list").innerHTML = `<div class="empty" style="grid-column:1/-1"><b>데이터를 가져오지 못했습니다.</b><br>${esc(d.error || "잠시 후 다시 열어 주세요.")}</div>`;
   }
   fillDongs(); kpis(); render();
 }).catch(() => { $("#sub").textContent = "데이터 파일을 불러오지 못했습니다."; });
